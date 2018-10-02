@@ -139,7 +139,7 @@ us_modcod={0:'0.BPSK 1/3 SF=16',
 
 
 # Logging
-logging.basicConfig(filename='/root/hts-stats.log',format='%(asctime)s %(levelname)s %(message)s',level=logging.WARNING)
+logging.basicConfig(filename='/root/hts_stats.log',format='%(asctime)s %(levelname)s %(message)s',level=logging.WARNING)
 
 # logging.basicConfig(level=logging.CRITICAL)
 # logger = logging.getLogger()
@@ -154,8 +154,9 @@ statement_list = []
 
 def getlatestfilefromS3(s3bucket, element_type, datepath):
 	output = runS3Query('s3cmd ls '+s3bucket+element_type+datepath)
+	#print output
 	fmt_output = str(output).split()
-	print fmt_output
+	#print fmt_output
 	file_list = []
 	latest_file_in_s3 = fmt_output[-1]
 	latest_ts_in_s3 = fmt_output[-3]
@@ -342,11 +343,12 @@ def add_statement(statement):
 
 def load_terminal_status_cache():
 	try:
-		term_status_cache = pickle.loads(mc.get('TerminalCache'))
+		with open('/root/terminal_status_cache.pkl', 'rb') as input:
+			return pickle.load(input)
 	except:
-		logging.warning('terminal_status_cache not found')
+		logging.warning('terminal_status_cache not found or failed to load')
 		term_status_cache = {}
-	return term_status_cache
+		return term_status_cache
 
 def send_data(Data):
 	influxpost = requests.post("http://influx.ops.kvh.com:8086/write?db=HTS_DEV&precision=s", data=Data)
@@ -356,12 +358,22 @@ def send_data(Data):
 	else:
 		logging.info('Influx Status Code: {}'.format(influxpost.status_code))
 
+        influxpost = requests.post("http://192.168.15.49:8086/write?db=HTS_DEV&precision=s",data=Data)
+        if influxpost.status_code != 204:
+                logging.warning('Influx Status Code: {}'.format(influxpost.status_code))
+                logging.warning('Influx Post Text: {}'.format(influxpost.text))
+        else:
+                logging.info('Influx Status Code: {}'.format(influxpost.status_code))
+
+
+
 def runS3Query(cmd):
 	return subprocess.check_output(cmd, shell=True)
 
 if __name__ == "__main__":
 	try:
 		os.system('rm /root/hts-stats/*.csv')
+		os.system('rm /root/hts-stats/*.csv.gz')
 
 		datepath = datetime.datetime.now().strftime('/%Y/%m/%d/')
 
@@ -394,7 +406,7 @@ if __name__ == "__main__":
 		# Convert statement_list into influx payload
 		payload = "".join(statement_list)
 
-		print payload
+		#print payload
 
 		send_data(payload)
 		send_hb()
@@ -402,3 +414,4 @@ if __name__ == "__main__":
 		logging.warning('hts-stats encountered: {}'.format(e))
 		print traceback.format_exc()
 		os.system('rm /root/hts-stats/*.csv')
+		os.system('rm /root/hts-stats/*.csv.gz')
